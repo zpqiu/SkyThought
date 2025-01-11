@@ -20,7 +20,7 @@
 
 # News
 
-- **[2025/01/10]** 🎉 We have released our Sky-T1-32B-Preview model and data through [HuggingFace](https://huggingface.co/NovaSky-AI)!
+- **[2025/01/10]** 🎉 We have released our Sky-T1-32B-Preview [model](https://huggingface.co/NovaSky-AI/Sky-T1-32B-Preview) and [data](https://huggingface.co/datasets/NovaSky-AI/Sky-T1_data_17k) through [HuggingFace](https://huggingface.co/NovaSky-AI)!
 
 
 # Links
