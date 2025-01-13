@@ -7,6 +7,3 @@ The datasets are available on [HuggingFace](https://huggingface.co/datasets/Nova
 from datasets import load_dataset
 ds = load_dataset("NovaSky-AI/Sky-T1_data_17k")
 ```
-
-## Github LFS
-Reference `/data/Sky-T1_data_17k.json` to download data from Github LFS.
