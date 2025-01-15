@@ -95,4 +95,4 @@ We provide a wrapper script `eval.py` to conveniently run reasoning benchmarks. 
 python eval.py --model Qwen/QwQ-32B-Preview --evals=AIME,MATH500,GPQADiamond --tp=8 --output_file=results.txt
 ```
     
-Example result: `{"AIME": 0.43, "MATH500": 0.80, "GPQADiamond": 0.54}` 
+Example result: `{"AIME": <aime_accuracy>, "MATH500": <math500_accuracy>, "GPQADiamond": <gpqa_diamond_accuracy>}` 
