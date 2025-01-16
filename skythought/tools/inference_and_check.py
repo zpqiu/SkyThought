@@ -44,7 +44,8 @@ def fetch_response_openai(llm, model_name, max_tokens, temp, prompt):
 def perform_inference_and_check(handler: TaskHandler, temperatures, max_tokens, result_file, llm, system_prompt, args):
     results = handler.load_existing_results(result_file)
     print(f"Loaded {len(results)} existing results.")
-    train_data = handler.load_and_filter_dataset(args.start, args.end, split=args.split, source=args.source, filter_difficulty=args.filter_difficulty)
+    train_data = handler.load_and_filter_dataset(args.start, args.end, split=args.split, source=args.source, \
+                                                 filter_difficulty=args.filter_difficulty, args=args)
     remaining_data = handler.process_remaining_data(train_data, results)
     conversations = handler.make_conversations(remaining_data, system_prompt)
 
@@ -154,7 +155,8 @@ def perform_check(handler: TaskHandler, temperatures, result_file, args):
     results = handler.load_existing_results(result_file)
     print(f"Loaded {len(results)} existing results.")
 
-    train_data = handler.load_and_filter_dataset(args.start, args.end, split=args.split, source=args.source, filter_difficulty=args.filter_difficulty)
+    train_data = handler.load_and_filter_dataset(args.start, args.end, split=args.split, source=args.source, \
+                                                 filter_difficulty=args.filter_difficulty, args=args)
     remaining_data = handler.process_remaining_data(train_data, {})
 
     tasks = []
@@ -204,7 +206,8 @@ def perform_check(handler: TaskHandler, temperatures, result_file, args):
 def perform_inference_and_save(handler: TaskHandler, temperatures, max_tokens, result_file, llm, system_prompt, args):
     results = handler.load_existing_results(result_file)
     print(f"Loaded {len(results)} existing results.")
-    train_data = handler.load_and_filter_dataset(args.start, args.end, split=args.split, source=args.source, filter_difficulty=args.filter_difficulty)
+    train_data = handler.load_and_filter_dataset(args.start, args.end, split=args.split, source=args.source, \
+                                                 filter_difficulty=args.filter_difficulty, args=args)
     remaining_data = handler.process_remaining_data(train_data, results)
     conversations = handler.make_conversations(remaining_data, system_prompt)
     
@@ -297,6 +300,8 @@ def main():
     parser.add_argument("--check", action="store_true", help="Perform evaluation checks on generated samples.")
     parser.add_argument("--inference", action="store_true", help="Perform inference.")
     parser.add_argument("--temperatures", type=float, nargs="+", default=[0], help="Temperature for sampling.")
+    parser.add_argument("--math-difficulty-lower-bound", type=int, default=None, help="Lowest difficulty level for math.")
+    parser.add_argument("--math-difficulty-upper-bound", type=int, default=None, help="Highest difficulty level for math.")
     args = parser.parse_args()
     
     handler: TaskHandler = TASK_HANDLERS[args.dataset]()
@@ -306,11 +311,17 @@ def main():
     # create result dir if not exists
     if args.result_dir and not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
-    result_file = os.path.join(args.result_dir, f"{MODEL_TO_NAME[args.model]}_{args.dataset}_{args.split}_{args.source}_{args.start}_{args.end}.json")
+    if args.math_difficulty_lower_bound is not None or  args.math_difficulty_upper_bound is not None:
+        result_file = os.path.join(args.result_dir, f"{MODEL_TO_NAME[args.model]}_{args.dataset}_{args.split}_{args.source}_{args.start}_{args.end}_{args.math_difficulty_lower_bound}_{args.math_difficulty_upper_bound}.json")
+    else:
+        result_file = os.path.join(args.result_dir, f"{MODEL_TO_NAME[args.model]}_{args.dataset}_{args.split}_{args.source}_{args.start}_{args.end}.json")
 
     if args.check:
         # check if converted file exists
-        converted_file = f"{args.result_dir}/converted_{MODEL_TO_NAME[args.model]}_{args.dataset}_{args.split}_{args.source}_{args.start}_{args.end}.json"
+        if args.math_difficulty_lower_bound is not None or  args.math_difficulty_upper_bound is not None:
+            converted_file = f"{args.result_dir}/converted_{MODEL_TO_NAME[args.model]}_{args.dataset}_{args.split}_{args.source}_{args.start}_{args.end}_{args.math_difficulty_lower_bound}_{args.math_difficulty_upper_bound}.json"
+        else:
+            converted_file = f"{args.result_dir}/converted_{MODEL_TO_NAME[args.model]}_{args.dataset}_{args.split}_{args.source}_{args.start}_{args.end}.json"
         if os.path.exists(converted_file):
             result_file = converted_file
         perform_check(handler, temperatures, result_file, args)
