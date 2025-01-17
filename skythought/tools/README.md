@@ -81,9 +81,11 @@ python inference_and_check.py --dataset NUMINA --model Qwen/QwQ-32B-Preview --tp
 ```
 
 
-
-#### TODO
-Add Best-of-N sampling.
+#### Best-of-N Inference and Check
+```bash
+python inference_and_check.py --dataset MATH500 --model Qwen/Qwen2-7B-Instruct --tp 4 --max_tokens 4096 --split test --result-dir ./ --inference --temperatures 0.7 --n 64
+python inference_and_check.py --dataset MATH500 --model Qwen/Qwen2-7B-Instruct --tp 4 --max_tokens 4096 --split test --result-dir ./ --check --temperatures 0.7 --n 8
+```
 
 ### Benchmark Evaluations
 We provide a wrapper script `eval.py` to conveniently run reasoning benchmarks. We currently support `AIME`, `MATH500`, `GPQADiamond`, and `MMLU`. This script can be used to launch evaluations for multiple benchmarks, then aggregate and log the accuracy for all benchmarks. 
