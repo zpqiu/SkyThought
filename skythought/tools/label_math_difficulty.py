@@ -11,6 +11,8 @@ import re
 import ast
 from util.prompts import grading_prompt, aops_criteria
 
+openai.base_url = "https://api.deepseek.com"
+
 # Function to set the OpenAI API key
 def set_openai_key(api_key):
     openai.api_key = api_key
@@ -42,20 +44,17 @@ def process_content(problem, api_key):
         try:
             # OpenAI API call
             response = openai.chat.completions.create(
-                model="gpt-4o-mini",
+                model="deepseek-reasoner",
                 messages=[
-                    {"role": "system", "content": "You are a math problem difficulty labeler."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=2048,
-                temperature=0.7
             )
             return response.choices[0].message.content
         except openai.RateLimitError:
             retries -= 1
             if retries == 0:
                 return "Error: Rate limit reached and retries exhausted."
-            print(f"Sleep for 5 seconds for API limit.")
+            print("Sleep for 5 seconds for API limit.")
             time.sleep(5)
         except Exception as e:
             return f"Error processing content: {e}"
