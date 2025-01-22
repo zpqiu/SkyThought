@@ -30,7 +30,7 @@ class TaskHandler:
     def check_correctness(self, problem, generation):
         raise NotImplementedError("Subclasses should implement this method.")
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         raise NotImplementedError("Subclasses should implement this method.")
 
     def make_conversations(self, data, system_prompt, model=None):
@@ -61,12 +61,13 @@ class MathTaskHandler(TaskHandler):
         pred = strip_answer_string(pred)
         return math_equal(pred, answer)
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -149,12 +150,13 @@ class GPQADiamondTaskHandler(TaskHandler):
     def get_question_key():
         return "Question"
 
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -232,12 +234,13 @@ class MMLUTaskHandler(TaskHandler):
         answer = abcd[problem["answer"]]
         return answer == pred
 
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -324,12 +327,13 @@ class NUMINATaskHandler(TaskHandler):
         pred = strip_answer_string(pred)
         return math_equal(pred, solution)
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -422,12 +426,13 @@ class APPSTaskHandler(TaskHandler):
             p.kill()
         return bool(result and np.all(result[0]))
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -514,12 +519,13 @@ class TACOTaskHandler(TaskHandler):
             p.kill()
         return bool(result and np.all(result[0]))
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -606,12 +612,13 @@ class LiveCodeBenchTaskHandler(TaskHandler):
 
         return result == "passed"
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -684,12 +691,13 @@ class GSM8KTaskHandler(TaskHandler):
         model_answer = self.sanitize_answer(model_answer)
         return model_answer == gt_answer
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -776,12 +784,13 @@ class ARCChallengeTaskHandler(TaskHandler):
         model_answer = self.get_answer(generation)
         return model_answer == gt_answer
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }

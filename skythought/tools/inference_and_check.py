@@ -1,8 +1,8 @@
+import os
 import json
 import argparse
 import re
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from vllm import LLM, SamplingParams
 from tqdm import tqdm
 from util.task_handlers import *
 from util.model_utils import *
@@ -31,6 +31,14 @@ def fetch_response_openai(llm, model_name, max_tokens, temp, prompt):
             temperature=1, # has to be 1
             max_completion_tokens=max_tokens 
         )
+    elif model_name == "deepseek-reasoner":
+        response = llm.chat.completions.create(
+            model=model_name,
+            messages=[p for p in prompt if p["role"] != "system"],
+            n=1,
+            temperature=1, # has to be 1
+            max_completion_tokens=max_tokens 
+        )
     else:
         response = llm.chat.completions.create(
             model=model_name,
@@ -51,15 +59,10 @@ def perform_inference_and_check(handler: TaskHandler, temperatures, max_tokens, 
 
     for temp in temperatures:
         
-        if args.model.startswith("openai"):
-            fetch_partial = partial(fetch_response_openai, llm, args.model, max_tokens, temp)
+        fetch_partial = partial(fetch_response_openai, llm, args.model, max_tokens, temp)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as e:
-                responses = list(e.map(fetch_partial, conversations))
-
-        else:
-            sampling_params = SamplingParams(max_tokens=max_tokens, temperature=temp)
-            responses = llm.chat(messages=conversations, sampling_params=sampling_params, use_tqdm=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as e:
+            responses = list(e.map(fetch_partial, conversations))
             
         total_correct = 0 
         total_finish = 0
@@ -71,14 +74,18 @@ def perform_inference_and_check(handler: TaskHandler, temperatures, max_tokens, 
             future_to_task = {}
             token_usages = {}
             for idx, response in enumerate(responses):
+                reasoning_content = None
                 if args.model.startswith("openai"):
                     response_str = response.choices[0].message.content.strip()
+                if args.model.startswith("deepseek"):
+                    response_str = response.choices[0].message.content.strip()
+                    reasoning_content = response.choices[0].message.reasoning_content.strip()
                 else:
                     response_str = response.outputs[0].text.strip()
-                future_to_task[executor.submit(handler.update_results, remaining_data[idx], response_str)] = idx
+                future_to_task[executor.submit(handler.update_results, remaining_data[idx], response_str, reasoning_content)] = idx
                 # print(f"Request output: {response}")
                 
-                if args.model.startswith("openai"):
+                if args.model.startswith("openai") or args.model.startswith("deepseek"):
                     token_usages[idx] = response.usage
                 else:
                     token_usages[idx] = {
@@ -103,8 +110,8 @@ def perform_inference_and_check(handler: TaskHandler, temperatures, max_tokens, 
                     results[problem_key]["prompt"] = prompt
 
                 results[problem_key]["responses"][str(temp)] = response_entry
-                
-                if args.model.startswith("openai"):
+
+                if args.model.startswith("openai") or args.model.startswith("deepseek"):
                     results[problem_key]["token_usages"][str(temp)] = {
                         "completion_tokens": token_usages[idx].completion_tokens,
                         "prompt_tokens": token_usages[idx].prompt_tokens,
@@ -171,7 +178,7 @@ def perform_check(handler: TaskHandler, temperatures, result_file, args):
                         if sample_id > (args.n - 1): continue
                         if True or response_entry["correctness"] is None:
                             processed = "processed_content" in response_entry
-                            tasks.append((item, temp, response_entry["processed_content"] if processed else response_entry["content"], sample_id))
+                            tasks.append((item, temp, response_entry["processed_content"] if processed else response_entry["content"], response_entry["reasoning_content"] if "reasoning_content" in response_entry else None, sample_id))
 
     print(f"Found {len(tasks)} responses requiring reject sampling...")
 
@@ -180,8 +187,8 @@ def perform_check(handler: TaskHandler, temperatures, result_file, args):
     correct = { temp: {} for temp in temperatures }
     with ProcessPoolExecutor(max_workers=32) as executor:
         future_to_task = {
-            executor.submit(handler.update_results, item, content): (item, temp, sample_id)
-            for (item, temp, content, sample_id) in tasks
+            executor.submit(handler.update_results, item, content, reasoning_content): (item, temp, sample_id)
+            for (item, temp, content, reasoning_content, sample_id) in tasks
         }
 
         # 4. Collect the results as they finish.
@@ -224,39 +231,33 @@ def perform_inference_and_save(handler: TaskHandler, temperatures, max_tokens, r
     conversations = handler.make_conversations(remaining_data, system_prompt, args.model)
     
     for temp in temperatures:
-        if args.model.startswith("openai"):
-            fetch_partial = partial(fetch_response_openai, llm, args.model, max_tokens, temp)
+        fetch_partial = partial(fetch_response_openai, llm, args.model, max_tokens, temp)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=16) as e:
-                responses = list(e.map(fetch_partial, conversations))
-
-        else:
-            sampling_params = SamplingParams(n=args.n, max_tokens=max_tokens, temperature=temp)
-            responses = llm.chat(messages=conversations, sampling_params=sampling_params, use_tqdm=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as e:
+            responses = list(e.map(fetch_partial, conversations))
 
         completion_tokens = []
         prompt_tokens = []
         for idx, response in enumerate(responses):
             response_entries = []
             token_usages = []
-            completion_token = 0
+            # completion_token = 0
             for sample_idx in range(args.n):
                 response_entry = {
-                    "content": response.choices[0].message.content.strip() if args.model.startswith("openai") else response.outputs[sample_idx].text.strip(),
+                    "content": response.choices[0].message.content.strip() if (args.model.startswith("openai") or args.model.startswith("deepseek")) else response.outputs[sample_idx].text.strip(),
                     "correctness": None,
                     "reason": None,
+                    "reasoning_content": response.choices[0].message.reasoning_content.strip() if (args.model.startswith("deepseek")) else None,
                 }
                 response_entries.append(response_entry)
-                if not args.model.startswith("openai"):
-                    token_usages.append({
-                        "completion_tokens": len(response.outputs[sample_idx].token_ids),
-                        "prompt_tokens": len(response.prompt_token_ids)
-                    })
-                    completion_token += len(response.outputs[sample_idx].token_ids)
-            completion_token /= args.n
-            prompt_token = len(response.prompt_token_ids)
-            prompt_tokens.append(prompt_token)
-            completion_tokens.append(completion_token)
+                # if not args.model.startswith("openai"):
+                #     token_usages.append({
+                #         "completion_tokens": len(response.outputs[sample_idx].token_ids),
+                #         "prompt_tokens": len(response.prompt_token_ids)
+                #     })
+                #     completion_token += len(response.outputs[sample_idx].token_ids)
+            prompt_tokens.append(response.usage.prompt_tokens)
+            completion_tokens.append(response.usage.completion_tokens)
 
             problem_key = remaining_data[idx][handler.get_question_key()] # can you use this idx
             if problem_key not in results:
@@ -270,7 +271,7 @@ def perform_inference_and_save(handler: TaskHandler, temperatures, max_tokens, r
 
             results[problem_key]["responses"][str(temp)] = response_entries
             
-            if args.model.startswith("openai"):
+            if args.model.startswith("openai") or args.model.startswith("deepseek"):
                 results[problem_key]["token_usages"][str(temp)] = {
                     "completion_tokens": response.usage.completion_tokens,
                     "prompt_tokens": response.usage.prompt_tokens,
@@ -351,14 +352,22 @@ def main():
         perform_check(handler, temperatures, result_file, args)
         return
     elif args.inference:
-        llm = OpenAI() if args.model.startswith("openai") else LLM(model=args.model, tensor_parallel_size=args.tp)
+        if args.model.startswith("deepseek"):
+            llm = OpenAI(base_url="https://api.deepseek.com", api_key=os.getenv("DEEPSEEK_API_KEY"))
+        else:
+            llm = OpenAI()
         system_prompt = SYSTEM_PROMPT[args.model]
         perform_inference_and_save(handler, temperatures, max_tokens, result_file, llm, system_prompt, args)
         return
 
-    llm = OpenAI() if args.model.startswith("openai") else LLM(model=args.model, tensor_parallel_size=args.tp)
+    if args.model.startswith("deepseek"):
+        llm = OpenAI(base_url="https://api.deepseek.com", api_key=os.getenv("DEEPSEEK_API_KEY"))
+    else:
+        llm = OpenAI()
     system_prompt = SYSTEM_PROMPT[args.model]
     perform_inference_and_check(handler, temperatures, max_tokens, result_file, llm, system_prompt, args)
 
 if __name__ == "__main__":
     main()
+
+# python inference_and_check.py --dataset NUMINA --model deepseek-reasoner --max_tokens 16384 --split train --source amc_aime --end 10 --result-dir ../../data --inference
