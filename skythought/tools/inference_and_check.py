@@ -2,6 +2,7 @@ import os
 import json
 import argparse
 import re
+import hashlib
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 from util.task_handlers import *
@@ -227,7 +228,9 @@ def perform_inference_and_save(handler: TaskHandler, temperatures, max_tokens, r
     print(f"Loaded {len(results)} existing results.")
     train_data = handler.load_and_filter_dataset(args.start, args.end, split=args.split, source=args.source, \
                                                  filter_difficulty=args.filter_difficulty, args=args)
+    print(f"Loaded {len(train_data)} train data.")
     remaining_data = handler.process_remaining_data(train_data, results)
+    print(f"Loaded {len(remaining_data)} remaining data.")
     conversations = handler.make_conversations(remaining_data, system_prompt, args.model)
     
     for temp in temperatures:
@@ -239,6 +242,7 @@ def perform_inference_and_save(handler: TaskHandler, temperatures, max_tokens, r
         completion_tokens = []
         prompt_tokens = []
         for idx, response in enumerate(responses):
+            print(f"Processing response {idx} of {len(responses)}")
             response_entries = []
             token_usages = []
             # completion_token = 0
@@ -278,6 +282,12 @@ def perform_inference_and_save(handler: TaskHandler, temperatures, max_tokens, r
                 }
             else:
                 results[problem_key]["token_usages"][str(temp)] = token_usages
+
+            # generate md5 value according llm name, dataset name, split, problem_key
+            md5_value = hashlib.md5(f"{args.model}_{args.dataset}_{args.split}_{problem_key}".encode()).hexdigest()
+            
+            with open(f"{args.result_dir}/cache/{md5_value}.json", 'w', encoding='utf-8') as file:
+                json.dump(results[problem_key], file, ensure_ascii=False, indent=4)
 
     # Token usage summary put into another subdirectory
     result_dir, result_name = os.path.split(result_file)
@@ -322,6 +332,8 @@ def main():
     parser.add_argument("--math-difficulty-lower-bound", type=int, default=None, help="Lowest difficulty level for math.")
     parser.add_argument("--math-difficulty-upper-bound", type=int, default=None, help="Highest difficulty level for math.")
     parser.add_argument("--n", type=int, default=1, help="Number of samples generated per problem.")
+    parser.add_argument("--sample-method", type=str, default="random", choices=["random", "uniform_by_difficulty"], help="Method to sample problems.")
+    parser.add_argument("--sample-size", type=int, default=100, help="Number of problems to sample.")
     args = parser.parse_args()
     
     handler: TaskHandler = TASK_HANDLERS[args.dataset]()
@@ -370,4 +382,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-# python inference_and_check.py --dataset NUMINA --model deepseek-reasoner --max_tokens 16384 --split train --source amc_aime --end 10 --result-dir ../../data --inference
+# python inference_and_check.py --dataset NUMINA --model deepseek-reasoner --max_tokens 16384 --split train --source amc_aime --sample-method uniform_by_difficulty --sample-size 160 --result-dir ../../data --inference

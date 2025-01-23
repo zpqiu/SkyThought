@@ -171,3 +171,4 @@ test_*
 
 run_all.sh
 keys.txt
+data/cache

@@ -372,13 +372,34 @@ class NUMINATaskHandler(TaskHandler):
         return conversations
 
     def load_and_filter_dataset(self, start, end, split="train", source=None, filter_difficulty=False, args=None):
+        # args.sample_size: int, args.sample_method: ["random", "uniform_by_difficulty"]
+        # if set args.sample_size > 0, the start and end will be ignored
         dataset = load_dataset("AI-MO/NuminaMath-CoT")
         train_data = dataset[split].to_pandas()
-        train_data = train_data.query('source == @source').iloc[start:end] if end > 0 else train_data.query('source == @source').iloc[start:]
         train_data = train_data[train_data["solution"].str.contains("boxed", na=False)]
-        if filter_difficulty:
-            diff_dict = self.get_difficulty_dict(source, start, end)
-            train_data = train_data[train_data["problem"].map(diff_dict).apply(lambda x: x >= args.math_difficulty_lower_bound and x <= args.math_difficulty_upper_bound)]
+
+        if filter_difficulty or (args.sample_size > 0 and args.sample_method == "uniform_by_difficulty"):
+            diff_dict = self.get_difficulty_dict(source, 0, -1)
+            train_data['difficulty'] = train_data["problem"].map(diff_dict)
+            train_data = train_data.query('difficulty >= 0')
+        if args.sample_size > 0:
+            if args.sample_method == "random":
+                train_data = train_data.query('source == @source').sample(n=args.sample_size, random_state=42).reset_index(drop=True)
+            elif args.sample_method == "uniform_by_difficulty":
+                diff_value_count = {
+                    "math": 5,
+                    "olympiads": 10,
+                    "amc_aime": 9
+                }
+                sample_size = args.sample_size // diff_value_count.get(source, 1)
+
+                train_data = train_data.query('source == @source').groupby('difficulty').apply(lambda x: x.sample(n=sample_size, random_state=42))
+                train_data = train_data.reset_index(drop=True)
+        else:
+            train_data = train_data.query('source == @source').iloc[start:end] if end > 0 else train_data.query('source == @source').iloc[start:]
+            if filter_difficulty:
+                diff_dict = self.get_difficulty_dict(source, start, end)
+                train_data = train_data[train_data["problem"].map(diff_dict).apply(lambda x: x >= args.math_difficulty_lower_bound and x <= args.math_difficulty_upper_bound)]
         return train_data
 
     def process_remaining_data(self, train_data, results):
