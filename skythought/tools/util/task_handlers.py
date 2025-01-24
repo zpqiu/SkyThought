@@ -14,6 +14,7 @@ from .math.testing_util import strip_answer_string, get_multiple_choice_answer, 
 from .livecodebench.testing_util import unsafe_lcb_runTests, map_to_example, has_test_type, post_process_code, translate_private_test_cases
 from .common import TimeoutException, timeout
 from util.model_utils import *
+import pandas as pd
 
 def has_code(response):
     pattern = r"```(?:[a-zA-Z]*)\n(.*?)```"
@@ -676,14 +677,25 @@ class LiveCodeBenchTaskHandler(TaskHandler):
         dataset = load_dataset("livecodebench/code_generation_lite", version_tag="release_v2", split=split, trust_remote_code=True)
         if filter_difficulty:
             dataset = dataset.filter(lambda example: example['difficulty'] == source)
-        dataset = dataset.map(
-            lambda example: {
-                "private_test_cases": translate_private_test_cases(example["private_test_cases"])
-            }
-        )
-        # Apply the mapping function
-        dataset = dataset.map(map_to_example, remove_columns=dataset.column_names).to_pandas()
-        return dataset.iloc[start:end] if end > 0 else dataset.iloc[start:]
+        
+        # 分批处理数据以避免内存溢出
+        batch_size = 100  # 可以根据需要调整批次大小
+        all_data = []
+        
+        for i in range(0, len(dataset), batch_size):
+            batch = dataset.select(range(i, min(i + batch_size, len(dataset))))
+            # 对每个批次应用转换
+            batch = batch.map(
+                lambda example: {
+                    "private_test_cases": translate_private_test_cases(example["private_test_cases"])
+                }
+            )
+            batch = batch.map(map_to_example, remove_columns=batch.column_names)
+            all_data.extend(batch)
+            
+        # 转换为 DataFrame
+        df = pd.DataFrame(all_data)
+        return df.iloc[start:end] if end > 0 else df.iloc[start:]
 
     def process_remaining_data(self, train_data, results):
         return [row.to_dict() for _, row in train_data.iterrows() if str(row["task_id"]) not in results]

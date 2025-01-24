@@ -110,6 +110,7 @@ Example result: `{"AIME": <aime_accuracy>, "MATH500": <math500_accuracy>, "GPQAD
 
 1. Add new model to `utils/model_utils.py` by changing `MODEL_TO_NAME` and `MODEL_TO_SYS`
 2. Start OpenAI compatible server
-3. python eval.py --model <model_name> --evals=AIME,MATH500,GPQADiamond --base-url <base_url> --output_file=results.txt  --temperatures 0.7 
+2.1 huggingface-cli login (for GPQADiamond)
+3. python eval.py --model <model_name> --evals=AIME,MATH500,GPQADiamond,LiveCodeBench --base-url <base_url> --output_file=results.txt  --temperatures 0.7 
 
 > R1 suggests using 0.5 or 0.6, but T1 suggests using 0.7.
