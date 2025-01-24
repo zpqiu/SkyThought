@@ -24,6 +24,7 @@ def parse_arguments():
     parser.add_argument("--source", type=str, help="Source for the dataset.")
     parser.add_argument("--output_file", required=True, type=str, help="Output file to write results to.")
     parser.add_argument("--temperatures", type=float, nargs="+", default=[0], help="Temperature for sampling.")
+    parser.add_argument("--base-url", type=str, default="https://api.deepseek.com", help="Base URL for DeepSeek API.")
     return parser.parse_args()
 
 def extract_accuracy_from_output(output):
@@ -71,6 +72,9 @@ def main():
             "--dataset", eval_name, 
             "--split", eval_to_split[eval_name], 
             "--tp", str(tp),
+            "--base-url", args.base_url,
+            "--max_tokens", str(24576),
+            # "--end", str(10),
             "--temperatures"
         ]
         command.extend(temperatures)  # Add temperatures as separate arguments

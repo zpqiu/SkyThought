@@ -14,6 +14,7 @@ from .math.testing_util import strip_answer_string, get_multiple_choice_answer, 
 from .livecodebench.testing_util import unsafe_lcb_runTests, map_to_example, has_test_type, post_process_code, translate_private_test_cases
 from .common import TimeoutException, timeout
 from util.model_utils import *
+import pandas as pd
 
 def has_code(response):
     pattern = r"```(?:[a-zA-Z]*)\n(.*?)```"
@@ -30,7 +31,7 @@ class TaskHandler:
     def check_correctness(self, problem, generation):
         raise NotImplementedError("Subclasses should implement this method.")
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         raise NotImplementedError("Subclasses should implement this method.")
 
     def make_conversations(self, data, system_prompt, model=None):
@@ -61,12 +62,13 @@ class MathTaskHandler(TaskHandler):
         pred = strip_answer_string(pred)
         return math_equal(pred, answer)
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -149,12 +151,13 @@ class GPQADiamondTaskHandler(TaskHandler):
     def get_question_key():
         return "Question"
 
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -232,12 +235,13 @@ class MMLUTaskHandler(TaskHandler):
         answer = abcd[problem["answer"]]
         return answer == pred
 
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -324,12 +328,13 @@ class NUMINATaskHandler(TaskHandler):
         pred = strip_answer_string(pred)
         return math_equal(pred, solution)
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -368,13 +373,34 @@ class NUMINATaskHandler(TaskHandler):
         return conversations
 
     def load_and_filter_dataset(self, start, end, split="train", source=None, filter_difficulty=False, args=None):
+        # args.sample_size: int, args.sample_method: ["random", "uniform_by_difficulty"]
+        # if set args.sample_size > 0, the start and end will be ignored
         dataset = load_dataset("AI-MO/NuminaMath-CoT")
         train_data = dataset[split].to_pandas()
-        train_data = train_data.query('source == @source').iloc[start:end] if end > 0 else train_data.query('source == @source').iloc[start:]
         train_data = train_data[train_data["solution"].str.contains("boxed", na=False)]
-        if filter_difficulty:
-            diff_dict = self.get_difficulty_dict(source, start, end)
-            train_data = train_data[train_data["problem"].map(diff_dict).apply(lambda x: x >= args.math_difficulty_lower_bound and x <= args.math_difficulty_upper_bound)]
+
+        if filter_difficulty or (args.sample_size > 0 and args.sample_method == "uniform_by_difficulty"):
+            diff_dict = self.get_difficulty_dict(source, 0, -1)
+            train_data['difficulty'] = train_data["problem"].map(diff_dict)
+            train_data = train_data.query('difficulty >= 0')
+        if args.sample_size > 0:
+            if args.sample_method == "random":
+                train_data = train_data.query('source == @source').sample(n=args.sample_size, random_state=42).reset_index(drop=True)
+            elif args.sample_method == "uniform_by_difficulty":
+                diff_value_count = {
+                    "math": 5,
+                    "olympiads": 10,
+                    "amc_aime": 9
+                }
+                sample_size = args.sample_size // diff_value_count.get(source, 1)
+
+                train_data = train_data.query('source == @source').groupby('difficulty').apply(lambda x: x.sample(n=sample_size, random_state=42))
+                train_data = train_data.reset_index(drop=True)
+        else:
+            train_data = train_data.query('source == @source').iloc[start:end] if end > 0 else train_data.query('source == @source').iloc[start:]
+            if filter_difficulty:
+                diff_dict = self.get_difficulty_dict(source, start, end)
+                train_data = train_data[train_data["problem"].map(diff_dict).apply(lambda x: x >= args.math_difficulty_lower_bound and x <= args.math_difficulty_upper_bound)]
         return train_data
 
     def process_remaining_data(self, train_data, results):
@@ -422,12 +448,13 @@ class APPSTaskHandler(TaskHandler):
             p.kill()
         return bool(result and np.all(result[0]))
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -514,12 +541,13 @@ class TACOTaskHandler(TaskHandler):
             p.kill()
         return bool(result and np.all(result[0]))
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -606,12 +634,13 @@ class LiveCodeBenchTaskHandler(TaskHandler):
 
         return result == "passed"
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -648,14 +677,25 @@ class LiveCodeBenchTaskHandler(TaskHandler):
         dataset = load_dataset("livecodebench/code_generation_lite", version_tag="release_v2", split=split, trust_remote_code=True)
         if filter_difficulty:
             dataset = dataset.filter(lambda example: example['difficulty'] == source)
-        dataset = dataset.map(
-            lambda example: {
-                "private_test_cases": translate_private_test_cases(example["private_test_cases"])
-            }
-        )
-        # Apply the mapping function
-        dataset = dataset.map(map_to_example, remove_columns=dataset.column_names).to_pandas()
-        return dataset.iloc[start:end] if end > 0 else dataset.iloc[start:]
+        
+        # 分批处理数据以避免内存溢出
+        batch_size = 100  # 可以根据需要调整批次大小
+        all_data = []
+        
+        for i in range(0, len(dataset), batch_size):
+            batch = dataset.select(range(i, min(i + batch_size, len(dataset))))
+            # 对每个批次应用转换
+            batch = batch.map(
+                lambda example: {
+                    "private_test_cases": translate_private_test_cases(example["private_test_cases"])
+                }
+            )
+            batch = batch.map(map_to_example, remove_columns=batch.column_names)
+            all_data.extend(batch)
+            
+        # 转换为 DataFrame
+        df = pd.DataFrame(all_data)
+        return df.iloc[start:end] if end > 0 else df.iloc[start:]
 
     def process_remaining_data(self, train_data, results):
         return [row.to_dict() for _, row in train_data.iterrows() if str(row["task_id"]) not in results]
@@ -684,12 +724,13 @@ class GSM8KTaskHandler(TaskHandler):
         model_answer = self.sanitize_answer(model_answer)
         return model_answer == gt_answer
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -776,12 +817,13 @@ class ARCChallengeTaskHandler(TaskHandler):
         model_answer = self.get_answer(generation)
         return model_answer == gt_answer
     
-    def update_results(self, problem, response):
+    def update_results(self, problem, response, reasoning_content=None):
         if not isinstance(response, str):
             response = response.outputs[0].text.strip()
         # Initialize the response structure
         response_entry = {
             "content": response,
+            "reasoning_content": reasoning_content,
             "correctness": None,
             "reason": None,
         }
@@ -795,7 +837,7 @@ class ARCChallengeTaskHandler(TaskHandler):
     
         return response_entry
 
-    def make_conversations(self, data, system_prompt):
+    def make_conversations(self, data, system_prompt, model=None):
         conversations = []
         for problem in data:
             prompt_text = self.generate_prompt(problem)
@@ -805,13 +847,25 @@ class ARCChallengeTaskHandler(TaskHandler):
             ])
         return conversations
 
-    def load_and_filter_dataset(self, start, end, split="train", source=None, filter_difficulty=False):
+    def load_and_filter_dataset(self, start, end, split="train", source=None, filter_difficulty=False, args=None):
         dataset = load_dataset(self.dataset, "ARC-Challenge")
         train_data = dataset[split].to_pandas()
-        return train_data.iloc[start:end] if end > 0 else train_data.iloc[start:]
+        if args.sample_size > 0:
+            train_data = train_data.sample(n=args.sample_size, random_state=42)
+        else:
+            train_data = train_data.iloc[start:end] if end > 0 else train_data.iloc[start:]
+        return train_data
 
     def process_remaining_data(self, train_data, results):
-        return [row.to_dict() for _, row in train_data.iterrows() if str(row["question"]) not in results]
+        rows = [row.to_dict() for _, row in train_data.iterrows() if str(row["question"]) not in results]
+        new_rows = []
+        # convert narray to list in columns "choices"
+        for row in rows:
+            row["choices"]['text'] = row["choices"]['text'].tolist()
+            row["choices"]['label'] = row["choices"]['label'].tolist()
+            new_rows.append(row)
+
+        return new_rows
 
     def get_answer(self, completion):
         # First, we try to extract similar to MATH answers
