@@ -825,7 +825,7 @@ class ARCChallengeTaskHandler(TaskHandler):
     
         return response_entry
 
-    def make_conversations(self, data, system_prompt):
+    def make_conversations(self, data, system_prompt, model=None):
         conversations = []
         for problem in data:
             prompt_text = self.generate_prompt(problem)
@@ -835,13 +835,25 @@ class ARCChallengeTaskHandler(TaskHandler):
             ])
         return conversations
 
-    def load_and_filter_dataset(self, start, end, split="train", source=None, filter_difficulty=False):
+    def load_and_filter_dataset(self, start, end, split="train", source=None, filter_difficulty=False, args=None):
         dataset = load_dataset(self.dataset, "ARC-Challenge")
         train_data = dataset[split].to_pandas()
-        return train_data.iloc[start:end] if end > 0 else train_data.iloc[start:]
+        if args.sample_size > 0:
+            train_data = train_data.sample(n=args.sample_size, random_state=42)
+        else:
+            train_data = train_data.iloc[start:end] if end > 0 else train_data.iloc[start:]
+        return train_data
 
     def process_remaining_data(self, train_data, results):
-        return [row.to_dict() for _, row in train_data.iterrows() if str(row["question"]) not in results]
+        rows = [row.to_dict() for _, row in train_data.iterrows() if str(row["question"]) not in results]
+        new_rows = []
+        # convert narray to list in columns "choices"
+        for row in rows:
+            row["choices"]['text'] = row["choices"]['text'].tolist()
+            row["choices"]['label'] = row["choices"]['label'].tolist()
+            new_rows.append(row)
+
+        return new_rows
 
     def get_answer(self, completion):
         # First, we try to extract similar to MATH answers

@@ -634,7 +634,7 @@
     "folder": "python"
   },
   "Sky-T1": {
-    "file_name": "your data path here",
+    "file_name": "bespokelabs/Bespoke-Stratos-17k",
     "formatting": "sharegpt",
     "columns": {
       "messages": "conversations",

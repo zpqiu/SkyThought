@@ -76,23 +76,21 @@ def perform_inference_and_check(handler: TaskHandler, temperatures, max_tokens, 
             token_usages = {}
             for idx, response in enumerate(responses):
                 reasoning_content = None
-                if args.model.startswith("openai"):
-                    response_str = response.choices[0].message.content.strip()
                 if args.model.startswith("deepseek"):
                     response_str = response.choices[0].message.content.strip()
                     reasoning_content = response.choices[0].message.reasoning_content.strip()
                 else:
-                    response_str = response.outputs[0].text.strip()
+                    response_str = response.choices[0].message.content.strip()
                 future_to_task[executor.submit(handler.update_results, remaining_data[idx], response_str, reasoning_content)] = idx
                 # print(f"Request output: {response}")
                 
-                if args.model.startswith("openai") or args.model.startswith("deepseek"):
-                    token_usages[idx] = response.usage
-                else:
-                    token_usages[idx] = {
-                        "completion_tokens": len(response.outputs[0].token_ids),
-                        "prompt_tokens": len(response.prompt_token_ids)
-                    }
+                # if args.model.startswith("openai") or args.model.startswith("deepseek"):
+                token_usages[idx] = response.usage
+                # else:
+                #     token_usages[idx] = {
+                #         "completion_tokens": len(response.outputs[0].token_ids),
+                #         "prompt_tokens": len(response.prompt_token_ids)
+                #     }
 
             for future in tqdm(as_completed(future_to_task), total=len(future_to_task), desc="Processing Generations"):
                 idx = future_to_task[future]
@@ -111,16 +109,11 @@ def perform_inference_and_check(handler: TaskHandler, temperatures, max_tokens, 
                     results[problem_key]["prompt"] = prompt
 
                 results[problem_key]["responses"][str(temp)] = response_entry
-
-                if args.model.startswith("openai") or args.model.startswith("deepseek"):
-                    results[problem_key]["token_usages"][str(temp)] = {
-                        "completion_tokens": token_usages[idx].completion_tokens,
-                        "prompt_tokens": token_usages[idx].prompt_tokens,
-                    }
-                else:
-                    # TODO: vLLM model, can it do the same thing
-                    results[problem_key]["token_usages"][str(temp)] = token_usages[idx] 
-        
+                results[problem_key]["token_usages"][str(temp)] = {
+                    "completion_tokens": token_usages[idx].completion_tokens,
+                    "prompt_tokens": token_usages[idx].prompt_tokens,
+                }
+                
         print(f"Final acc: {total_correct}/{total_finish}")
         acc = round(total_correct / total_finish, 4) if total_finish > 0 else 0
         print(json.dumps({"acc": acc}))
@@ -282,7 +275,7 @@ def perform_inference_and_save(handler: TaskHandler, temperatures, max_tokens, r
                 }
             else:
                 results[problem_key]["token_usages"][str(temp)] = token_usages
-
+            print(results[problem_key])
             # generate md5 value according llm name, dataset name, split, problem_key
             md5_value = hashlib.md5(f"{args.model}_{args.dataset}_{args.split}_{problem_key}".encode()).hexdigest()
             
@@ -334,6 +327,7 @@ def main():
     parser.add_argument("--n", type=int, default=1, help="Number of samples generated per problem.")
     parser.add_argument("--sample-method", type=str, default="random", choices=["random", "uniform_by_difficulty"], help="Method to sample problems.")
     parser.add_argument("--sample-size", type=int, default=100, help="Number of problems to sample.")
+    parser.add_argument("--base-url", type=str, default="https://api.deepseek.com", help="Base URL for DeepSeek API.")
     args = parser.parse_args()
     
     handler: TaskHandler = TASK_HANDLERS[args.dataset]()
@@ -367,7 +361,7 @@ def main():
         if args.model.startswith("deepseek"):
             llm = OpenAI(base_url="https://api.deepseek.com", api_key=os.getenv("DEEPSEEK_API_KEY"))
         else:
-            llm = OpenAI()
+            llm = OpenAI(base_url=args.base_url)
         system_prompt = SYSTEM_PROMPT[args.model]
         perform_inference_and_save(handler, temperatures, max_tokens, result_file, llm, system_prompt, args)
         return
@@ -375,7 +369,7 @@ def main():
     if args.model.startswith("deepseek"):
         llm = OpenAI(base_url="https://api.deepseek.com", api_key=os.getenv("DEEPSEEK_API_KEY"))
     else:
-        llm = OpenAI()
+        llm = OpenAI(base_url=args.base_url)
     system_prompt = SYSTEM_PROMPT[args.model]
     perform_inference_and_check(handler, temperatures, max_tokens, result_file, llm, system_prompt, args)
 
