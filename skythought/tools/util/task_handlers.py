@@ -107,6 +107,15 @@ class MATH500TaskHandler(MathTaskHandler):
     @staticmethod
     def get_question_key():
         return "problem"
+    
+    def load_and_filter_dataset(self, start, end, split="train", source=None, filter_difficulty=False, args=None):
+        dataset = load_dataset(self.dataset)
+        train_data = dataset[split].to_pandas()
+        if args.sample_size > 0:
+            train_data = train_data.sample(n=args.sample_size, random_state=42).reset_index(drop=True)
+        else:
+            train_data = train_data.iloc[start:end] if end > 0 else train_data.iloc[start:]
+        return train_data
 
 class AIMETaskHandler(MathTaskHandler):
     def __init__(self):
@@ -212,7 +221,11 @@ class GPQADiamondTaskHandler(TaskHandler):
     def load_and_filter_dataset(self, start, end, split="train", source=None, filter_difficulty=False, args=None):
         dataset = load_dataset(self.dataset, "gpqa_diamond")
         train_data = dataset[split].to_pandas()
-        return train_data.iloc[start:end] if end > 0 else train_data.iloc[start:]
+        if args.sample_size > 0:
+            train_data = train_data.sample(n=args.sample_size, random_state=42).reset_index(drop=True)
+        else:
+            train_data = train_data.iloc[start:end] if end > 0 else train_data.iloc[start:]
+        return train_data
 
     def process_remaining_data(self, train_data, results):
         return [row.to_dict() for _, row in train_data.iterrows() if str(row["Question"]) not in results]
@@ -695,7 +708,11 @@ class LiveCodeBenchTaskHandler(TaskHandler):
             
         # 转换为 DataFrame
         df = pd.DataFrame(all_data)
-        return df.iloc[start:end] if end > 0 else df.iloc[start:]
+        if args.sample_size > 0:
+            df = df.sample(n=args.sample_size, random_state=42).reset_index(drop=True)
+        else:
+            df = df.iloc[start:end] if end > 0 else df.iloc[start:]
+        return df
 
     def process_remaining_data(self, train_data, results):
         return [row.to_dict() for _, row in train_data.iterrows() if str(row["task_id"]) not in results]

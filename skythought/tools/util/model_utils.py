@@ -73,7 +73,8 @@ Now, begin with the [ASSESS] action for the following task:
     "openai/gpt-4o-mini": "User: {input}\nPlease reason step by step, and put your final answer within \\boxed{{}}.\n\nAssistant:",
     "meta-llama/Llama-3.2-1B-Instruct":  "You are a helpful and harmless assistant. You are Llama developed by Meta. You should think step-by-step.",
     "deepseek-reasoner": None,
-    "bespokelabs/Bespoke-Stratos-7B": SKY_T1_SYS
+    "bespokelabs/Bespoke-Stratos-7B": SKY_T1_SYS,
+    "R1/Qwen2.5-1.5B-Instruct": SKY_T1_SYS
 }
 
 MODEL_TO_NAME = {
@@ -92,4 +93,5 @@ MODEL_TO_NAME = {
     "meta-llama/Llama-3.2-1B-Instruct": "Llama-3.2-1B-Instruct",
     "deepseek-reasoner": "R1",
     "bespokelabs/Bespoke-Stratos-7B": "Bespoke-Stratos-7B",
+    "R1/Qwen2.5-1.5B-Instruct": "R1-Qwen2.5-1.5B-Instruct",
 }
